@@ -245,6 +245,7 @@ with tab4:
             # ----- DÜZELTME BURADA BAŞLIYOR (KeyError Kontrolü) -----
             
             # 1. Modelin ihtiyaç duyduğu kolonlar (model_columns) ile yüklenen dosyanın kolonlarını (df.columns) karşılaştır
+            # model_columns, .pkl dosyasından yüklendi (örn: ['ortalama_aylik_yukleme_tl', ...])
             required_cols_set = set(model_columns)
             uploaded_cols_set = set(df.columns)
             
@@ -313,6 +314,7 @@ with tab4:
                 st.header("📝 Detaylı Müşteri Listesi (Net Kâr, Segment ve Risk)")
                 st.dataframe(df.sort_values(by='Churn Riski (%)', ascending=False), use_container_width=True)
         except KeyError as e:
+            # Bu, 'df_for_model = df[model_columns].fillna(0)' satırı başarısız olursa diye ek bir güvencedir
             st.error(f"HATA: Yüklediğiniz dosyada '{e}' kolonu bulunamadı. Lütfen 'Akıllı Şablon' formatını kullandığınızdan emin olun.")
             if 'df_loaded' in st.session_state: del st.session_state['df_loaded']
         except Exception as e:
@@ -320,7 +322,7 @@ with tab4:
             if 'df_loaded' in st.session_state: del st.session_state['df_loaded']
 
 # ----------------------------------
-# TAB 5: Müşteri Simülasyonu 📱 (HATA AYIKLAMALI YENİ SÜRÜM)
+# TAB 5: Müşteri Simülasyonu 📱 (ATTRIBUTEERROR İÇİN DÜZELTİLDİ)
 # ----------------------------------
 with tab5:
     st.header("Müşteri Arayüzü Simülasyonu 📱")
@@ -337,16 +339,24 @@ with tab5:
         selected_customer_name = st.selectbox("Simülasyon için bir müşteri seçin:", customer_list, index=None, placeholder="Bir müşteri seçin...")
 
         if selected_customer_name:
+            
+            # ----- DÜZELTME BURADA BAŞLIYOR (AttributeError Kontrolü) -----
             customer_data = None
             try:
+                # Önce müşteriyi filtrele
                 filtered_df = df_loaded[df_loaded[display_column] == selected_customer_name]
+                
+                # Filtrenin boş olup olmadığını kontrol et
                 if not filtered_df.empty:
-                    customer_data = filtered_df.iloc[0]
+                    customer_data = filtered_df.iloc[0] # Boş değilse, ilk satırı al (bu bizim müşterimiz)
                 else:
-                    st.error(f"HATA: '{selected_customer_name}' adlı müşteri için veri bulunamadı.")
+                    st.error(f"HATA: '{selected_customer_name}' adlı müşteri için veri bulunamadı. Filtre boş döndü.")
             except Exception as e:
                 st.error(f"Müşteri verisi alınırken beklenmedik bir hata oluştu: {e}")
             
+            # ----- DÜZELTME BURADA BİTİYOR -----
+
+            # Sadece customer_data başarıyla bulunduysa devam et
             if customer_data is not None:
                 segment = customer_data.get('Segment', 'Kayıp (Zarar)'); brut_gelir = customer_data.get('Aylık Brüt Gelir (Faiz)', 0)
                 segment_cb_map = {'Platin': 0.75, 'Altın': 0.60, 'Gümüş': 0.40, 'Bronz': 0.20, 'Kayıp (Zarar)': 0.0}
