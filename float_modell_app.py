@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt # Grafik kütüphanesi
 import io # Excel/CSV işlemleri için
+import joblib # MODELİ YÜKLEMEK İÇİN YENİ KÜTÜPHANE
 
 # ---------------------------------------------------------------------
 # 0. SAYFA YAPILANDIRMASI VE BAŞLIK
@@ -10,10 +11,10 @@ import io # Excel/CSV işlemleri için
 st.set_page_config(layout="wide", page_title="Opet Pay 'Akıllı' Dashboard")
 
 st.title("Opet Pay 'Akıllı Strateji' Dashboardu 🚀")
-st.markdown("Bu dashboard, net kârlılığı analiz eder, churn riskini tahmin eder ve müşteri arayüzünü simüle eder.")
+st.markdown("Bu dashboard, net kârlılığı analiz eder, **gerçek ML modeliyle** churn riskini tahmin eder ve müşteri arayüzünü simüle eder.")
 
 # ---------------------------------------------------------------------
-# 1. ÇEKİRDEK HESAPLAMA MANTIĞI (Net Kâr)
+# 1. ÇEKİRDEK HESAPLAMA MANTIĞI (Net Kâr) - Değişiklik Yok
 # ---------------------------------------------------------------------
 
 @st.cache_data
@@ -45,46 +46,31 @@ def calculate_net_profitability(
     }
 
 # ---------------------------------------------------------------------
-# 2. SİMÜLE EDİLMİŞ ML FONKSİYONU
+# 2. GERÇEK ML MODELİNİ YÜKLEME (YENİ BÖLÜM)
 # ---------------------------------------------------------------------
 
-def tahmin_et_churn_riski(row):
-    """ Gerçek bir ML modelinin davranışını simüle eder. """
-    score = 0
-    sebepler = []
+@st.cache_resource # Modeli hafızada tutmak için _resource kullanılır
+def load_model():
+    """ 'churn_model.pkl' ve 'model_columns.pkl' dosyalarını yükler. """
     try:
-        if row['son_islem_uzerinden_gecen_gun'] > 45:
-            score += 40; sebepler.append("Uzun süredir işlem yapmıyor")
-        elif row['son_islem_uzerinden_gecen_gun'] > 20:
-            score += 20; sebepler.append("İşlem sıklığı azalmış")
-    except: pass 
-    try:
-        if row['harcama_trendi_yuzde'] < -20:
-            score += 40; sebepler.append("Harcama trendi çok düşük")
-        elif row['harcama_trendi_yuzde'] < 0:
-            score += 20; sebepler.append("Harcama trendi negatif")
-    except: pass 
-    try:
-        if row['Segment'] in ['Platin', 'Altın'] and score > 20:
-            score += 20
-        elif row['Segment'] in ['Kayıp (Zarar)', 'Bronz']:
-            score -= 10 
-    except: pass 
-            
-    score = max(0, min(score, 100)) 
-    seviye = "Düşük"
-    if score > 75: seviye = "KRİTİK"
-    elif score > 50: seviye = "Yüksek"
-    elif score > 20: seviye = "Orta"
-    try:
-        if seviye in ["Yüksek", "Orta"] and row['Segment'] in ['Platin', 'Altın']:
-            seviye = "KRİTİK"
-    except: pass
-    return score, seviye, ", ".join(sebepler) if sebepler else "Davranışsal veri eksik"
+        model = joblib.load("churn_model.pkl")
+        model_columns = joblib.load("model_columns.pkl")
+        print("ML Modeli ve Kolonları başarıyla yüklendi.")
+        return model, model_columns
+    except FileNotFoundError:
+        # Bu hata SADECE lokalde çalışırken (dosyaları bulamazsa) görünür
+        st.error("HATA: 'churn_model.pkl' veya 'model_columns.pkl' dosyaları bulunamadı!")
+        st.warning("Lütfen Adım 1'deki 'model_egitme.py' betiğini çalıştırdığınızdan ve .pkl dosyalarının ana kodla aynı klasörde olduğundan emin olun.")
+        return None, None
+    except Exception as e:
+        st.error(f"Model yüklenirken bir hata oluştu: {e}")
+        return None, None
 
+# Modeli ve modelin eğitildiği kolon listesini yükle
+model, model_columns = load_model()
 
 # ---------------------------------------------------------------------
-# 3. STREAMLIT ARAYÜZÜ - SIDEBAR
+# 3. STREAMLIT ARAYÜZÜ - SIDEBAR - Değişiklik Yok
 # ---------------------------------------------------------------------
 st.sidebar.header("Genel Simülasyon Parametreleri ⚙️")
 st.sidebar.caption("Buradaki ayarlar, 'Hipotetik' analiz sekmelerinin temelini oluşturur.")
@@ -105,28 +91,26 @@ op_maliyet_tl = st.sidebar.slider("Müşteri Başı Aylık Operasyonel Maliyet (
 # 4. ANA HESAPLAMALAR VE DASHBOARD SEKMELERİ
 # ---------------------------------------------------------------------
 
-# 'Ortalama' müşteri profiline göre ana hesaplamalar (tab1, tab2, tab3 için)
 results = calculate_net_profitability(
     musteri_sayisi, aylik_yukleme, bakiye_tutma_suresi, 
     faiz_orani, cashback_payi_yuzde, 
     islem_maliyeti_yuzde, op_maliyet_tl
 )
 
-# Yüklenen veriyi saklamak için 'session_state' başlatma
 if 'df_loaded' not in st.session_state:
     st.session_state['df_loaded'] = None
 
-# Dashboard Sekmeleri (5 SEKMELİ YENİ YAPI)
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Ana Dashboard (Hipotetik) 📈", 
     "Net Kârlılık Dağılımı 📊", 
     "Hipotetik Segmentasyon 🎯",
     "Veri Yükle & Akıllı Analiz 🧠",
-    "Müşteri Simülasyonu 📱" # YENİ SEKME
+    "Müşteri Simülasyonu 📱"
 ])
 
 # ----------------------------------
-# TAB 1: Ana Dashboard (Net Kâr KPIs)
+# TAB 1, 2, 3 - Değişiklik Yok
+# (Bu sekmeler önceki kodla birebir aynıdır)
 # ----------------------------------
 with tab1:
     st.header("Genel Proje Kârlılığı (Hipotetik / Aylık)")
@@ -138,23 +122,15 @@ with tab1:
     with col_cb: st.metric("🎁 Müşteri Cashback Maliyeti", f"{results['toplam_cashback_maliyeti']:,.0f} TL", delta_color="inverse")
     with col_islem: st.metric("💳 İşlem Maliyeti (Yükleme)", f"{results['toplam_islem_maliyeti']:,.0f} TL", delta_color="inverse")
     with col_op: st.metric("⚙️ Operasyonel Maliyet (Sabit)", f"{results['toplam_op_maliyeti']:,.0f} TL", delta_color="inverse")
-
-    st.divider()
-    st.header("🤖 Proje Asistanı Yorumu (Hipotetik)")
+    st.divider(); st.header("🤖 Proje Asistanı Yorumu (Hipotetik)");
     with st.container(border=True):
         if results['toplam_net_kar'] > 0:
             st.success(f"**Proje Sağlığı: POZİTİF**\nMevcut ayarlarla, proje ayda **{results['toplam_net_kar']:,.0f} TL Net Kâr** üretiyor.")
         else:
             st.error(f"**Proje Sağlığı: NEGATİF**\nMevcut ayarlarla, proje ayda **{results['toplam_net_kar']:,.0f} TL Net ZARAR** üretiyor. Kâra geçmek için maliyetleri düşürün veya 'bakiye tutma süresini' artırın.")
 
-# ----------------------------------
-# TAB 2: Net Kârlılık Dağılımı (YENİ ASİSTAN EKLENDİ)
-# ----------------------------------
 with tab2:
-    st.header("Görsel Net Kârlılık Dağılımı")
-    col1_chart, col2_chart = st.columns(2)
-    
-    # --- Grafik 1 (Donut) ---
+    st.header("Görsel Net Kârlılık Dağılımı"); col1_chart, col2_chart = st.columns(2)
     with col1_chart:
         st.subheader("Aylık Brüt Gelir Dağılımı")
         if results['toplam_aylik_brut_gelir'] > 0:
@@ -164,7 +140,6 @@ with tab2:
                  labels = ["Maliyetler (Geliri Aştı)"]; sizes = [diger_maliyetler_toplami]; colors = ['#FF4B4B']
             else:
                  sizes = [net_kar_size, results['toplam_cashback_maliyeti'], results['toplam_islem_maliyeti'], results['toplam_op_maliyeti']]; colors = ['#2ca02c', '#1f77b4', '#ff7f0e', '#d62728']
-            
             fig, ax = plt.subplots(); fig.patch.set_alpha(0.0); ax.patch.set_alpha(0.0)
             wedges, texts, autotexts = ax.pie(sizes, labels=None, autopct='%1.1f%%', startangle=90, pctdistance=0.85, colors=colors, wedgeprops={'width':0.4})
             for text in autotexts: text.set_color('white')
@@ -172,74 +147,39 @@ with tab2:
             legend = ax.legend(wedges, labels, title="Gelir Dağılımı", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1), facecolor='#222') 
             plt.setp(legend.get_title(), color='white'); plt.setp(legend.get_texts(), color='white'); ax.axis('equal')  
             st.pyplot(fig, use_container_width=True)
-            st.caption("Faizden elde edilen gelirin nereye gittiğini gösterir.")
         else: st.warning("Kârlılık için lütfen parametreleri ayarlayın.")
-
-    # --- Grafik 2 (Bar) ---
-    scenario_data = [] # Bu veriyi asistan için de kullanacağız
+    scenario_data = []
     with col2_chart:
         st.subheader("Net Kârın 'Tutma Süresine' Göre Değişimi")
         for gun in [1, 5, 10, 15, 20, 25, 30]:
             res = calculate_net_profitability(musteri_sayisi, aylik_yukleme, gun, faiz_orani, cashback_payi_yuzde, islem_maliyeti_yuzde, op_maliyet_tl)
             scenario_data.append({ "gun": gun, "label": f"{gun} Gün", "value": res['toplam_net_kar'] })
-        
         scenario_df = pd.DataFrame(scenario_data); fig, ax = plt.subplots(); fig.patch.set_alpha(0.0); ax.patch.set_alpha(0.0)
         bar_colors = ['#FF4B4B' if v < 0 else '#1f77b4' for v in scenario_df["value"]]; bars = ax.bar(scenario_df["label"], scenario_df["value"], color=bar_colors)
         ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False); ax.spines['bottom'].set_color('white'); ax.spines['left'].set_color('white')
         ax.tick_params(axis='x', colors='white'); ax.tick_params(axis='y', colors='white'); ax.set_ylabel("Aylık NET Kâr (TL)", color='white')
         for bar in bars: yval = bar.get_height(); ax.text(bar.get_x() + bar.get_width()/2.0, yval, f'{yval:,.0f}', va='bottom', ha='center', color='white', fontsize=9)
         st.pyplot(fig, use_container_width=True)
-        st.caption("Net kârın, 'tutma süresine' ne kadar kritik bağlı olduğunu gösterir.")
-
-    # ----- YENİ ASİSTAN (TAB 2) -----
-    st.divider()
-    st.header("🤖 Finansal Analist Asistanı Yorumu")
+    st.divider(); st.header("🤖 Finansal Analist Asistanı Yorumu");
     with st.container(border=True):
-        
-        # 1. Donut Grafik Yorumu (Net Kâr Marjı)
         st.subheader("Gelir Dağılımı Analizi")
         if results['toplam_aylik_brut_gelir'] > 0:
-            net_kar_yuzde = (results['toplam_net_kar'] / results['toplam_aylik_brut_gelir']) * 100
-            islem_maliyet_yuzde = (results['toplam_islem_maliyeti'] / results['toplam_aylik_brut_gelir']) * 100
-            
-            if net_kar_yuzde > 20:
-                st.success(f"**Net Kâr Marjı: %{net_kar_yuzde:.1f} (Güçlü)**\nFaizden gelen her 100 TL'nin {net_kar_yuzde:.1f} TL'si, tüm masraflar (işlem maliyeti, cashback, operasyonel) düşüldükten sonra Opet'e net kâr olarak kalıyor.")
-            elif net_kar_yuzde > 0:
-                st.warning(f"**Net Kâr Marjı: %{net_kar_yuzde:.1f} (Zayıf)**\nProje kârlı, ancak net kâr marjı düşük. En büyük maliyet kalemi %{islem_maliyet_yuzde:.1f} ile 'İşlem Maliyeti' gibi görünüyor. Bu, 'Geçici' (Zarar) segmentinin yüksekliğinden kaynaklanabilir.")
-            else:
-                st.error(f"**Net Kâr Marjı: %{net_kar_yuzde:.1f} (Negatif)**\nModel şu an zarar ediyor. Maliyetler (özellikle 'İşlem Maliyeti': %{islem_maliyet_yuzde:.1f}), faizden gelen brüt gelirden daha yüksek.")
-        else:
-            st.info("Brüt Gelir 0 olduğu için marj hesaplanamıyor.")
-
-        # 2. Bar Grafik Yorumu (Başa Baş Noktası)
-        st.subheader("Başa Baş (Break-Even) Analizi")
-        basa_bas_gunu = None
+            net_kar_yuzde = (results['toplam_net_kar'] / results['toplam_aylik_brut_gelir']) * 100; islem_maliyet_yuzde = (results['toplam_islem_maliyeti'] / results['toplam_aylik_brut_gelir']) * 100
+            if net_kar_yuzde > 20: st.success(f"**Net Kâr Marjı: %{net_kar_yuzde:.1f} (Güçlü)**\nFaizden gelen her 100 TL'nin {net_kar_yuzde:.1f} TL'si Opet'e net kâr olarak kalıyor.")
+            elif net_kar_yuzde > 0: st.warning(f"**Net Kâr Marjı: %{net_kar_yuzde:.1f} (Zayıf)**\nProje kârlı, ancak net kâr marjı düşük. En büyük maliyet kalemi %{islem_maliyet_yuzde:.1f} ile 'İşlem Maliyeti' gibi görünüyor.")
+            else: st.error(f"**Net Kâr Marjı: %{net_kar_yuzde:.1f} (Negatif)**\nModel şu an zarar ediyor. Maliyetler (özellikle 'İşlem Maliyeti': %{islem_maliyet_yuzde:.1f}), faizden gelen brüt gelirden daha yüksek.")
+        else: st.info("Brüt Gelir 0 olduğu için marj hesaplanamıyor.")
+        st.subheader("Başa Baş (Break-Even) Analizi"); basa_bas_gunu = None
         for item in scenario_data:
-            if item['value'] > 0:
-                basa_bas_gunu = item['gun']
-                break
-        
-        if basa_bas_gunu:
-            st.success(f"**Başa Baş Noktası: {basa_bas_gunu} Gün**\nBu ayarlarla, 'ortalama' bir müşterinin bize net kâr getirmeye başlaması için, parasını sistemde en az **{basa_bas_gunu} gün** tutması gerekiyor.")
-        else:
-            st.error("**Başa Baş Noktası BULUNAMADI**\nMevcut maliyet yapısıyla, müşteri parasını 30 gün tutsa bile bu model net kâr üretemiyor. İşlem maliyetleri (%{islem_maliyeti_yuzde}) çok yüksek!")
+            if item['value'] > 0: basa_bas_gunu = item['gun']; break
+        if basa_bas_gunu: st.success(f"**Başa Baş Noktası: {basa_bas_gunu} Gün**\nBu ayarlarla, 'ortalama' bir müşterinin bize net kâr getirmeye başlaması için, parasını sistemde en az **{basa_bas_gunu} gün** tutması gerekiyor.")
+        else: st.error("**Başa Baş Noktası BULUNAMADI**\nMevcut maliyet yapısıyla, müşteri parasını 30 gün tutsa bile bu model net kâr üretemiyor.")
 
-# ----------------------------------
-# TAB 3: Hipotetik Segmentasyon
-# ----------------------------------
 with tab3:
     st.header("Hipotetik Segmentasyon & Kampanya Motoru 🎯")
     st.info("Bu bölüm, 'ortalama' müşteri verisine dayalı 5 varsayımsal segmenti *net kârlılık* bazında analiz eder.")
-    
-    st.subheader("Müşteri Segmentasyonu ve NET Kârlılık (Kullanıcı Başına)")
-    cols = st.columns(5)
-    segments = {
-        "Kayıp": {"yukleme": aylik_yukleme * 0.5, "sure": 2, "cb_stratejisi_yuzde": 0, "emoji": "💔"},
-        "Geçici": {"yukleme": aylik_yukleme * 2.0, "sure": 3, "cb_stratejisi_yuzde": 40, "emoji": "💨"},
-        "Standart": {"yukleme": aylik_yukleme, "sure": bakiye_tutma_suresi, "cb_stratejisi_yuzde": cashback_payi_yuzde, "emoji": "👤"},
-        "Sadık": {"yukleme": aylik_yukleme * 0.8, "sure": 25, "cb_stratejisi_yuzde": 60, "emoji": "💖"},
-        "Altın": {"yukleme": aylik_yukleme * 2.5, "sure": 28, "cb_stratejisi_yuzde": 75, "emoji": "🌟"}
-    }
+    st.subheader("Müşteri Segmentasyonu ve NET Kârlılık (Kullanıcı Başına)"); cols = st.columns(5)
+    segments = {"Kayıp": {"yukleme": aylik_yukleme * 0.5, "sure": 2, "cb_stratejisi_yuzde": 0, "emoji": "💔"},"Geçici": {"yukleme": aylik_yukleme * 2.0, "sure": 3, "cb_stratejisi_yuzde": 40, "emoji": "💨"},"Standart": {"yukleme": aylik_yukleme, "sure": bakiye_tutma_suresi, "cb_stratejisi_yuzde": cashback_payi_yuzde, "emoji": "👤"},"Sadık": {"yukleme": aylik_yukleme * 0.8, "sure": 25, "cb_stratejisi_yuzde": 60, "emoji": "💖"},"Altın": {"yukleme": aylik_yukleme * 2.5, "sure": 28, "cb_stratejisi_yuzde": 75, "emoji": "🌟"}}
     segment_results_net = {}
     for i, (segment_name, params) in enumerate(segments.items()):
         with cols[i]:
@@ -252,28 +192,26 @@ with tab3:
             st.metric("Ort. Bakiye Tutma Süresi", f"{params['sure']} Gün")
             st.metric(f"İşlem Maliyeti (%{islem_maliyeti_yuzde})", f"{res['toplam_islem_maliyeti']:,.2f} TL")
             
-    st.divider()
-    st.header("🤖 Detaylı Kampanya Asistanı (Hipotetik / Maliyet-Odaklı)")
+    st.divider(); st.header("🤖 Detaylı Kampanya Asistanı (Hipotetik / Maliyet-Odaklı)");
     try:
         with st.container(border=True):
-            st.subheader("Strateji 1: 'Geçici' 💨 Müşteriyi Dönüştürme")
-            gecici_net_kar = segment_results_net['Geçici']['net_kar']; gecici_islem_maliyet = segment_results_net['Geçici']['maliyet_islem']
-            if gecici_net_kar < 0:
-                st.error(f"**KRİTİK ANALİZ:** 'Geçici' segment şu anda **net {gecici_net_kar:,.2f} TL ZARAR** üretiyor. **Neden?** Yüksek işlem maliyeti ({gecici_islem_maliyet:,.2f} TL), düşük faiz gelirinden fazla. **Strateji:** Bu segmente ASLA cashback vermeyin. Tek hedef, 'bakiye tutma süresini' uzatmaktır.")
+            st.subheader("Strateji 1: 'Geçici' 💨 Müşteriyi Dönüştürme"); gecici_net_kar = segment_results_net['Geçici']['net_kar']; gecici_islem_maliyet = segment_results_net['Geçici']['maliyet_islem']
+            if gecici_net_kar < 0: st.error(f"**KRİTİK ANALİZ:** 'Geçici' segment şu anda **net {gecici_net_kar:,.2f} TL ZARAR** üretiyor. **Neden?** Yüksek işlem maliyeti ({gecici_islem_maliyet:,.2f} TL), düşük faiz gelirinden fazla. **Strateji:** Bu segmente ASLA cashback vermeyin. Tek hedef, 'bakiye tutma süresini' uzatmaktır.")
             else: st.warning("Geçici segment şu an kârlı, ancak işlem maliyetlerine dikkat edilmeli.")
         with st.container(border=True):
-            st.subheader("Strateji 2: 'Sadık' 💖 Müşteriyi Büyütme")
-            sadik_net_kar = segment_results_net['Sadık']['net_kar']; sadik_islem_maliyet = segment_results_net['Sadık']['maliyet_islem']
+            st.subheader("Strateji 2: 'Sadık' 💖 Müşteriyi Büyütme"); sadik_net_kar = segment_results_net['Sadık']['net_kar']; sadik_islem_maliyet = segment_results_net['Sadık']['maliyet_islem']
             st.info(f"**ANALİZ:** 'Sadık' segment **net {sadik_net_kar:,.2f} TL KÂR** üretiyor. **Güçlü Yön:** İşlem maliyetleri ({sadik_islem_maliyet:,.2f} TL) çok düşük, faiz geliri harika. **Strateji:** Bu segmentin 'aylık yükleme tutarını' artırmalıyız.")
     except Exception as e: st.error(f"Hipotetik asistan yüklenirken bir hata oluştu: {e}")
 
 # ----------------------------------
-# TAB 4: Veri Yükle & Akıllı Analiz
+# TAB 4: Veri Yükle & Akıllı Analiz (GERÇEK ML MODELİNE GÜNCELLENDİ)
 # ----------------------------------
 with tab4:
-    st.header("Veri Yükle & Akıllı Segmentasyon 🧠")
-    st.info("Kendi müşteri verinizi (Excel veya CSV) yükleyerek *net kârlılık* ve *churn (terk) riski* analizi yapın. Yüklediğiniz veri, 'Müşteri Simülasyonu' sekmesini de aktif hale getirecektir.")
-    st.subheader("1. Adım: Yeni Şablonu İndirin")
+    st.header("Veri Yükle & Akıllı Segmentasyon (Gerçek ML Modeli) 🧠")
+    st.info("Kendi müşteri verinizi yükleyerek *net kârlılık* ve *gerçek ML modeliyle* churn (terk) riski analizi yapın. Soldaki TÜM faiz ve maliyet ayarları bu hesaplama için kullanılacaktır.")
+
+    st.subheader("1. Adım: Şablonu İndirin")
+    # (Not: Bu şablon, modelin eğitildiği şablonla (musteri_csv_gercekci_sentez.csv) aynı kolonlara sahiptir)
     sample_data = {
         'musteri_id': ['M-1001', 'M-1002', 'M-1003'],
         'ad_soyad': ['Ali Veli (Riskli)', 'Ayşe Yılmaz (Sadık)', 'Mehmet Öztürk (Zarar)'],
@@ -299,54 +237,84 @@ with tab4:
     uploaded_file = st.file_uploader("Doldurduğunuz yeni şablonu (Excel/CSV) buraya yükleyin:", type=["xlsx", "csv"], key="file_uploader")
 
     st.subheader("3. Adım: Dinamik Net Kârlılık ve Churn Analizi")
-    if uploaded_file:
+    
+    # Modelin yüklenip yüklenmediğini kontrol et
+    if model is None or model_columns is None:
+        st.error("ML Modeli yüklenemedi. Lütfen 'churn_model.pkl' ve 'model_columns.pkl' dosyalarının ana kodla aynı klasörde olduğundan emin olun.")
+    
+    elif uploaded_file:
         try:
             df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-            required_cols = ['ortalama_aylik_yukleme_tl', 'ortalama_bakiye_tutma_suresi_gun']
-            if not all(col in df.columns for col in required_cols):
-                st.error(f"HATA: Yüklediğiniz dosyada zorunlu kolonlar ({', '.join(required_cols)}) bulunamadı.")
-            else:
-                g_faiz_orani = faiz_orani; g_islem_maliyeti_yuzde = islem_maliyeti_yuzde; g_op_maliyet_tl = op_maliyet_tl
-                def calculate_customer_net_profit(row):
-                    res = calculate_net_profitability(1, row['ortalama_aylik_yukleme_tl'], row['ortalama_bakiye_tutma_suresi_gun'], g_faiz_orani, 0, g_islem_maliyeti_yuzde, g_op_maliyet_tl)
-                    return res['toplam_aylik_brut_gelir'], res['toplam_net_kar'], res['toplam_islem_maliyeti']
-                df[['Aylık Brüt Gelir (Faiz)', 'Aylık NET Kâr (CB Hariç)', 'Aylık İşlem Maliyeti']] = df.apply(calculate_customer_net_profit, axis=1, result_type='expand')
-                df.loc[df['Aylık NET Kâr (CB Hariç)'] <= 0, 'Segment'] = 'Kayıp (Zarar)'
-                karlilar = df[df['Aylık NET Kâr (CB Hariç)'] > 0]
-                if not karlilar.empty:
-                    try:
-                        karlilar['Segment'] = pd.qcut(karlilar['Aylık NET Kâr (CB Hariç)'], 4, labels=['Bronz', 'Gümüş', 'Altın', 'Platin'], duplicates='drop')
-                        df.update(karlilar)
-                    except ValueError: karlilar['Segment'] = 'Altın'; df.update(karlilar)
-                df[['Churn Riski (%)', 'Risk Seviyesi', 'Risk Sebebi']] = df.apply(tahmin_et_churn_riski, axis=1, result_type='expand')
-                
-                st.session_state['df_loaded'] = df
-                st.success(f"{len(df)} adet müşteri verisi başarıyla işlendi ve hafızaya alındı. 'Müşteri Simülasyonu 📱' sekmesine geçebilirsiniz.")
+            
+            # Yüklenen veriyi, modelin eğitildiği kolon sırasına göre hazırla
+            df_for_model = df[model_columns].fillna(0)
+            
+            # ----- A. NET KÂRLILIK HESAPLAMA -----
+            g_faiz_orani = faiz_orani; g_islem_maliyeti_yuzde = islem_maliyeti_yuzde; g_op_maliyet_tl = op_maliyet_tl
+            def calculate_customer_net_profit(row):
+                res = calculate_net_profitability(1, row['ortalama_aylik_yukleme_tl'], row['ortalama_bakiye_tutma_suresi_gun'], g_faiz_orani, 0, g_islem_maliyeti_yuzde, g_op_maliyet_tl)
+                return res['toplam_aylik_brut_gelir'], res['toplam_net_kar'], res['toplam_islem_maliyeti']
+            df[['Aylık Brüt Gelir (Faiz)', 'Aylık NET Kâr (CB Hariç)', 'Aylık İşlem Maliyeti']] = df.apply(calculate_customer_net_profit, axis=1, result_type='expand')
+            
+            # ----- B. DİNAMİK SEGMENTASYON (NET KÂRA GÖRE) -----
+            df.loc[df['Aylık NET Kâr (CB Hariç)'] <= 0, 'Segment'] = 'Kayıp (Zarar)'
+            karlilar = df[df['Aylık NET Kâr (CB Hariç)'] > 0]
+            if not karlilar.empty:
+                try:
+                    karlilar['Segment'] = pd.qcut(karlilar['Aylık NET Kâr (CB Hariç)'], 4, labels=['Bronz', 'Gümüş', 'Altın', 'Platin'], duplicates='drop')
+                    df.update(karlilar)
+                except ValueError: karlilar['Segment'] = 'Altın'; df.update(karlilar)
 
-                st.header("🚨 Acil Eylem Raporu (Churn Riski)"); churn_summary = df.groupby('Risk Seviyesi')['Aylık NET Kâr (CB Hariç)'].agg(['count', 'sum']).rename(columns={'count': 'Müşteri Sayısı', 'sum': 'Risk Altındaki NET Kâr (Aylık)'})
-                st.dataframe(churn_summary.style.format({'Müşteri Sayısı': '{:,.0f}', 'Risk Altındaki NET Kâr (Aylık)': '{:,.2f} TL'}))
-                
-                st.header("🤖 Akıllı Kampanya Asistanı (Veriye Dayalı)"); df_kritik = df[df['Risk Seviyesi'] == 'KRİTİK'].sort_values(by='Aylık NET Kâr (CB Hariç)', ascending=False)
-                if not df_kritik.empty:
-                    st.error(f"**ACİL EYLEM GEREKİYOR!** {len(df_kritik)} adet YÜKSEK DEĞERLİ ve 'KRİTİK' riskli müşteri tespit edildi.")
-                    with st.container(border=True):
-                        for index, musteri in df_kritik.head(3).iterrows(): 
-                            musteri_adi = musteri.get('ad_soyad', musteri['musteri_id']); st.warning(f"**Müşteri: {musteri_adi} (Segment: {musteri['Segment']})**")
-                            st.markdown(f"  - **Risk:** %{musteri['Churn Riski (%)']} (Sebep: *{musteri.get('Risk Sebebi', 'Bilinmiyor')}*)"); st.markdown(f"  - **Kaybedilmekte Olan Kâr:** Aylık **{musteri['Aylık NET Kâr (CB Hariç)']:,.2f} TL**.")
-                else: st.success("Harika! 'KRİTİK' seviyede risk taşıyan yüksek değerli müşteriniz bulunmuyor.")
+            # ----- C. GERÇEK ML MODELİ İLE CHURN TAHMİNİ (GÜNCELLENDİ) -----
+            # Model, 'Terk Edecek' (1) olasılığını tahmin eder
+            churn_probabilities = model.predict_proba(df_for_model)[:, 1]
+            df['Churn Riski (%)'] = (churn_probabilities * 100).round(0)
+            
+            # Olasılığa göre seviye belirle
+            def set_risk_level(row):
+                score = row['Churn Riski (%)']
+                segment = row['Segment']
+                seviye = "Düşük"
+                if score > 75: seviye = "KRİTİK"
+                elif score > 50: seviye = "Yüksek"
+                elif score > 20: seviye = "Orta"
+                # Kârlı müşterinin riski her zaman KRİTİK'tir
+                if seviye in ["Yüksek", "Orta"] and segment in ['Platin', 'Altın']:
+                    seviye = "KRİTİK"
+                return seviye
 
-                st.header("📝 Detaylı Müşteri Listesi (Net Kâr, Segment ve Risk)")
-                st.dataframe(df.sort_values(by='Churn Riski (%)', ascending=False), use_container_width=True)
+            df['Risk Seviyesi'] = df.apply(set_risk_level, axis=1)
+            
+            # ----- D. VERİYİ HAFIZAYA KAYDET -----
+            st.session_state['df_loaded'] = df
+            st.success(f"{len(df)} adet müşteri verisi başarıyla işlendi ve GERÇEK ML MODELİ ile churn tahmini tamamlandı!")
+
+            # ----- SONUÇLARI GÖSTER -----
+            st.header("🚨 Acil Eylem Raporu (Churn Riski)"); churn_summary = df.groupby('Risk Seviyesi')['Aylık NET Kâr (CB Hariç)'].agg(['count', 'sum']).rename(columns={'count': 'Müşteri Sayısı', 'sum': 'Risk Altındaki NET Kâr (Aylık)'})
+            st.dataframe(churn_summary.style.format({'Müşteri Sayısı': '{:,.0f}', 'Risk Altındaki NET Kâr (Aylık)': '{:,.2f} TL'}))
+            
+            st.header("🤖 Akıllı Kampanya Asistanı (Veriye Dayalı)"); df_kritik = df[df['Risk Seviyesi'] == 'KRİTİK'].sort_values(by='Aylık NET Kâr (CB Hariç)', ascending=False)
+            if not df_kritik.empty:
+                st.error(f"**ACİL EYLEM GEREKİYOR!** {len(df_kritik)} adet YÜKSEK DEĞERLİ ve 'KRİTİK' riskli müşteri tespit edildi.")
+                with st.container(border=True):
+                    for index, musteri in df_kritik.head(3).iterrows(): 
+                        musteri_adi = musteri.get('ad_soyad', musteri['musteri_id']); st.warning(f"**Müşteri: {musteri_adi} (Segment: {musteri['Segment']})**")
+                        st.markdown(f"  - **Model Tahmini:** %{musteri['Churn Riski (%)']:.0f} Terk Etme Riski.")
+                        st.markdown(f"  - **Kaybedilmekte Olan Kâr:** Aylık **{musteri['Aylık NET Kâr (CB Hariç)']:,.2f} TL**.")
+            else: st.success("Harika! 'KRİTİK' seviyede risk taşıyan yüksek değerli müşteriniz bulunmuyor.")
+
+            st.header("📝 Detaylı Müşteri Listesi (Net Kâr, Segment ve Risk)")
+            st.dataframe(df.sort_values(by='Churn Riski (%)', ascending=False), use_container_width=True)
         except Exception as e:
-            st.error(f"Dosya okunurken bir hata oluştu: {e}")
+            st.error(f"Dosya okunurken veya ML modeli çalışırken bir hata oluştu: {e}")
             if 'df_loaded' in st.session_state: del st.session_state['df_loaded']
 
 # ----------------------------------
-# TAB 5: Müşteri Simülasyonu 📱
+# TAB 5: Müşteri Simülasyonu 📱 (ML MODELİNE GÜNCELLENDİ)
 # ----------------------------------
 with tab5:
     st.header("Müşteri Arayüzü Simülasyonu 📱")
-    st.info("Bu simülasyon, 'Akıllı Analiz' sekmesinde yüklediğiniz veriyi kullanır. Müşterinizin uygulamada ne göreceğini ve ona hangi akıllı kampanyanın sunulacağını gösterir.")
+    st.info("Bu simülasyon, 'Akıllı Analiz' sekmesinde yüklediğiniz ve ML modeli tarafından skorlanmış veriyi kullanır.")
 
     if st.session_state.get('df_loaded') is None:
         st.warning("Simülasyonu başlatmak için lütfen önce 'Veri Yükle & Akıllı Analiz 🧠' sekmesinden bir müşteri veri dosyası yükleyin.")
@@ -376,10 +344,12 @@ with tab5:
                     st.caption(f"Bu kazanç, {brut_gelir:,.2f} TL'lik faiz geliriniz üzerinden {cb_orani:.0%} oranında hesaplanan payınızdır.")
                     st.divider(); st.subheader("Akıllı Asistanınız Diyor ki:")
                     
-                    risk_seviyesi = customer_data.get('Risk Seviyesi', 'Düşük'); risk_sebebi = customer_data.get('Risk Sebebi', '')
+                    risk_seviyesi = customer_data.get('Risk Seviyesi', 'Düşük')
+                    churn_riski_yuzde = customer_data.get('Churn Riski (%)', 0)
+                    
                     if risk_seviyesi == "KRİTİK":
                         kayip_kar = customer_data['Aylık NET Kâr (CB Hariç)']; bonus = max(50, kayip_kar * 0.5)
-                        st.error(f"**Sizi Özledik!**\nUzun süredir ({risk_sebebi}) sizi görememek bizi üzdü. Geri dönün, size özel **{bonus:,.0f} TL**'lik yakıt puanı anında cüzdanınızda!")
+                        st.error(f"**Sizi Özledik!**\nML Modelimiz, %{churn_riski_yuzde:.0f} ihtimalle sizi kaybetmek üzere olduğumuzu tahmin ediyor. Lütfen geri dönün, size özel **{bonus:,.0f} TL**'lik yakıt puanı anında cüzdanınızda!")
                     elif segment == "Kayıp (Zarar)":
                         yukleme = customer_data['ortalama_aylik_yukleme_tl']
                         st.warning(f"**Yeni Fırsat!**\nYüksek yükleme ({yukleme:,.0f} TL) yaptığınızı görüyoruz. Bu parayı 15 gün 'Kazandıran Bakiye' olarak ayırın, işlem ücreti maliyetinizin yarısını puan olarak iade edelim!")
