@@ -201,7 +201,7 @@ with tab3:
     except Exception as e: st.error(f"Hipotetik asistan yüklenirken bir hata oluştu: {e}")
 
 # ----------------------------------
-# TAB 4: Veri Yükle & Akıllı Analiz (KEYERROR VE INDEXERROR İÇİN DÜZELTİLDİ)
+# TAB 4: Veri Yükle & Akıllı Analiz (TÜM HATA KONTROLLERİ EKLENDİ)
 # ----------------------------------
 with tab4:
     st.header("Veri Yükle & Akıllı Segmentasyon (Gerçek ML Modeli) 🧠")
@@ -209,7 +209,7 @@ with tab4:
 
     st.subheader("1. Adım: Şablonu İndirin")
     sample_data = {
-        'musteri_id': ['M-1001', 'M-1002', 'M-1003'],
+        'musteri_id': ['M-1001', 'M-1m_1002', 'M-1003'],
         'ad_soyad': ['Ali Veli (Riskli)', 'Ayşe Yılmaz (Sadık)', 'Mehmet Öztürk (Zarar)'],
         'ortalama_aylik_yukleme_tl': [8000, 2000, 15000],
         'ortalama_bakiye_tutma_suresi_gun': [25, 28, 3],
