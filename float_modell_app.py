@@ -245,27 +245,26 @@ with tab4:
             # ----- DÜZELTME BURADA BAŞLIYOR (KeyError Kontrolü) -----
             
             # 1. Modelin ihtiyaç duyduğu kolonlar (model_columns) ile yüklenen dosyanın kolonlarını (df.columns) karşılaştır
-            # model_columns, .pkl dosyasından yüklendi (örn: ['ortalama_aylik_yukleme_tl', ...])
             required_cols_set = set(model_columns)
             uploaded_cols_set = set(df.columns)
             
             # Eksik kolonları bul
             missing_cols = required_cols_set - uploaded_cols_set
             
-            if missing_cols:
-                # Eğer eksik kolon varsa, HATA VER ve çökme
-                st.error(f"HATA: Yüklediğiniz dosya ML modeli için gerekli formatta değil. Modelin çalışması için şu kolonlar eksik: **{', '.join(missing_cols)}**")
-                st.warning(f"Lütfen 'Akıllı Şablonu' indirin ve dosyanızın **{model_columns}** kolonlarını içerdiğinden emin olun.")
-                if 'df_loaded' in st.session_state:
-                    del st.session_state['df_loaded'] # Hatalı veriyi hafızadan sil
-            else:
-                # 2. Eğer tüm kolonlar varsa, devam et
-                
-                # Yüklenen veriyi, modelin eğitildiği kolon sırasına göre hazırla
-                df_for_model = df[model_columns].fillna(0)
-                
-                # ----- DÜZELTME BURADA BİTİYOR -----
+            # ML için Gerekli Kolonlar
+            ml_ready = not bool(missing_cols) # Eğer eksik kolon yoksa (True)
             
+            # Finansal Analiz için Gerekli Kolonlar
+            financial_cols_ok = 'ortalama_aylik_yukleme_tl' in df.columns and 'ortalama_bakiye_tutma_suresi_gun' in df.columns
+            
+            # ----- DÜZELTME BURADA BİTİYOR -----
+            
+            if not financial_cols_ok:
+                st.error("HATA: Yüklediğiniz dosyada 'ortalama_aylik_yukleme_tl' ve 'ortalama_bakiye_tutma_suresi_gun' kolonları bulunamadı. Temel analiz yapılamıyor.")
+                if 'df_loaded' in st.session_state: del st.session_state['df_loaded']
+            
+            else:
+                # Finansal kolonlar TAMAM, en azından Net Kâr analizi yapabiliriz
                 g_faiz_orani = faiz_orani; g_islem_maliyeti_yuzde = islem_maliyeti_yuzde; g_op_maliyet_tl = op_maliyet_tl
                 def calculate_customer_net_profit(row):
                     res = calculate_net_profitability(1, row['ortalama_aylik_yukleme_tl'], row['ortalama_bakiye_tutma_suresi_gun'], g_faiz_orani, 0, g_islem_maliyeti_yuzde, g_op_maliyet_tl)
@@ -280,41 +279,61 @@ with tab4:
                         df.update(karlilar)
                     except ValueError: karlilar['Segment'] = 'Altın'; df.update(karlilar)
 
-                # ----- GERÇEK ML MODELİ İLE CHURN TAHMİNİ -----
-                churn_probabilities = model.predict_proba(df_for_model)[:, 1]
-                df['Churn Riski (%)'] = (churn_probabilities * 100).round(0)
+                # ----- ML MODELİNİ ÇALIŞTIRMA (Sadece Mümkünse) -----
+                if ml_ready:
+                    # ML Modeli için gerekli tüm kolonlar var
+                    df_for_model = df[model_columns].fillna(0)
+                    churn_probabilities = model.predict_proba(df_for_model)[:, 1]
+                    df['Churn Riski (%)'] = (churn_probabilities * 100).round(0)
+                    
+                    def set_risk_level(row):
+                        score = row['Churn Riski (%)']; segment = row['Segment']
+                        seviye = "Düşük"
+                        if score > 75: seviye = "KRİTİK"
+                        elif score > 50: seviye = "Yüksek"
+                        elif score > 20: seviye = "Orta"
+                        if seviye in ["Yüksek", "Orta"] and segment in ['Platin', 'Altın']:
+                            seviye = "KRİTİK"
+                        return seviye
+                    df['Risk Seviyesi'] = df.apply(set_risk_level, axis=1)
+                    st.success(f"{len(df)} adet müşteri verisi başarıyla işlendi ve GERÇEK ML MODELİ ile churn tahmini tamamlandı!")
                 
-                def set_risk_level(row):
-                    score = row['Churn Riski (%)']; segment = row['Segment']
-                    seviye = "Düşük"
-                    if score > 75: seviye = "KRİTİK"
-                    elif score > 50: seviye = "Yüksek"
-                    elif score > 20: seviye = "Orta"
-                    if seviye in ["Yüksek", "Orta"] and segment in ['Platin', 'Altın']:
-                        seviye = "KRİTİK"
-                    return seviye
-                df['Risk Seviyesi'] = df.apply(set_risk_level, axis=1)
-                
-                st.session_state['df_loaded'] = df
-                st.success(f"{len(df)} adet müşteri verisi başarıyla işlendi ve GERÇEK ML MODELİ ile churn tahmini tamamlandı!")
+                else:
+                    # ML Modeli için kolonlar EKSİK
+                    st.warning(f"ML Modeli için gerekli kolonlar bulunamadı: {', '.join(missing_cols)}. Churn tahmini (Risk Seviyesi) atlanıyor.")
+                    df['Churn Riski (%)'] = 0
+                    df['Risk Seviyesi'] = 'Veri Eksik'
+                    st.success(f"{len(df)} adet müşteri verisi için Net Kâr analizi tamamlandı (ML tahmini atlandı).")
 
-                st.header("🚨 Acil Eylem Raporu (Churn Riski)"); churn_summary = df.groupby('Risk Seviyesi')['Aylık NET Kâr (CB Hariç)'].agg(['count', 'sum']).rename(columns={'count': 'Müşteri Sayısı', 'sum': 'Risk Altındaki NET Kâr (Aylık)'})
-                st.dataframe(churn_summary.style.format({'Müşteri Sayısı': '{:,.0f}', 'Risk Altındaki NET Kâr (Aylık)': '{:,.2f} TL'}))
+                # ----- VERİYİ HAFIZAYA KAYDET -----
+                st.session_state['df_loaded'] = df
+
+                # ----- SONUÇLARI GÖSTER -----
+                st.header("🚨 Acil Eylem Raporu (Churn Riski)");
+                if ml_ready:
+                    churn_summary = df.groupby('Risk Seviyesi')['Aylık NET Kâr (CB Hariç)'].agg(['count', 'sum']).rename(columns={'count': 'Müşteri Sayısı', 'sum': 'Risk Altındaki NET Kâr (Aylık)'})
+                    st.dataframe(churn_summary.style.format({'Müşteri Sayısı': '{:,.0f}', 'Risk Altındaki NET Kâr (Aylık)': '{:,.2f} TL'}))
+                else:
+                    st.info("ML tahmini yapılmadığı için Churn Raporu oluşturulamadı. Lütfen 8 kolonlu 'Akıllı Şablonu' yükleyin.")
                 
-                st.header("🤖 Akıllı Kampanya Asistanı (Veriye Dayalı)"); df_kritik = df[df['Risk Seviyesi'] == 'KRİTİK'].sort_values(by='Aylık NET Kâr (CB Hariç)', ascending=False)
-                if not df_kritik.empty:
-                    st.error(f"**ACİL EYLEM GEREKİYOR!** {len(df_kritik)} adet YÜKSEK DEĞERLİ ve 'KRİTİK' riskli müşteri tespit edildi.")
-                    with st.container(border=True):
-                        for index, musteri in df_kritik.head(3).iterrows(): 
-                            musteri_adi = musteri.get('ad_soyad', musteri['musteri_id']); st.warning(f"**Müşteri: {musteri_adi} (Segment: {musteri['Segment']})**")
-                            st.markdown(f"  - **Model Tahmini:** %{musteri['Churn Riski (%)']:.0f} Terk Etme Riski.")
-                            st.markdown(f"  - **Kaybedilmekte Olan Kâr:** Aylık **{musteri['Aylık NET Kâr (CB Hariç)']:,.2f} TL**.")
-                else: st.success("Harika! 'KRİTİK' seviyede risk taşıyan yüksek değerli müşteriniz bulunmuyor.")
+                st.header("🤖 Akıllı Kampanya Asistanı (Veriye Dayalı)"); 
+                if ml_ready:
+                    df_kritik = df[df['Risk Seviyesi'] == 'KRİTİK'].sort_values(by='Aylık NET Kâr (CB Hariç)', ascending=False)
+                    if not df_kritik.empty:
+                        st.error(f"**ACİL EYLEM GEREKİYOR!** {len(df_kritik)} adet YÜKSEK DEĞERLİ ve 'KRİTİK' riskli müşteri tespit edildi.")
+                        with st.container(border=True):
+                            for index, musteri in df_kritik.head(3).iterrows(): 
+                                musteri_adi = musteri.get('ad_soyad', musteri['musteri_id']); st.warning(f"**Müşteri: {musteri_adi} (Segment: {musteri['Segment']})**")
+                                st.markdown(f"  - **Model Tahmini:** %{musteri['Churn Riski (%)']:.0f} Terk Etme Riski.")
+                                st.markdown(f"  - **Kaybedilmekte Olan Kâr:** Aylık **{musteri['Aylık NET Kâr (CB Hariç)']:,.2f} TL**.")
+                    else: st.success("Harika! 'KRİTİK' seviyede risk taşıyan yüksek değerli müşteriniz bulunmuyor.")
+                else:
+                    st.info("ML tahmini yapılmadığı için Akıllı Asistan önerileri sınırlıdır.")
 
                 st.header("📝 Detaylı Müşteri Listesi (Net Kâr, Segment ve Risk)")
                 st.dataframe(df.sort_values(by='Churn Riski (%)', ascending=False), use_container_width=True)
+        
         except KeyError as e:
-            # Bu, 'df_for_model = df[model_columns].fillna(0)' satırı başarısız olursa diye ek bir güvencedir
             st.error(f"HATA: Yüklediğiniz dosyada '{e}' kolonu bulunamadı. Lütfen 'Akıllı Şablon' formatını kullandığınızdan emin olun.")
             if 'df_loaded' in st.session_state: del st.session_state['df_loaded']
         except Exception as e:
@@ -343,20 +362,16 @@ with tab5:
             # ----- DÜZELTME BURADA BAŞLIYOR (AttributeError Kontrolü) -----
             customer_data = None
             try:
-                # Önce müşteriyi filtrele
                 filtered_df = df_loaded[df_loaded[display_column] == selected_customer_name]
-                
-                # Filtrenin boş olup olmadığını kontrol et
                 if not filtered_df.empty:
-                    customer_data = filtered_df.iloc[0] # Boş değilse, ilk satırı al (bu bizim müşterimiz)
+                    customer_data = filtered_df.iloc[0] 
                 else:
-                    st.error(f"HATA: '{selected_customer_name}' adlı müşteri için veri bulunamadı. Filtre boş döndü.")
+                    st.error(f"HATA: '{selected_customer_name}' adlı müşteri için veri bulunamadı.")
             except Exception as e:
                 st.error(f"Müşteri verisi alınırken beklenmedik bir hata oluştu: {e}")
             
             # ----- DÜZELTME BURADA BİTİYOR -----
 
-            # Sadece customer_data başarıyla bulunduysa devam et
             if customer_data is not None:
                 segment = customer_data.get('Segment', 'Kayıp (Zarar)'); brut_gelir = customer_data.get('Aylık Brüt Gelir (Faiz)', 0)
                 segment_cb_map = {'Platin': 0.75, 'Altın': 0.60, 'Gümüş': 0.40, 'Bronz': 0.20, 'Kayıp (Zarar)': 0.0}
@@ -381,6 +396,8 @@ with tab5:
                         if risk_seviyesi == "KRİTİK":
                             kayip_kar = customer_data['Aylık NET Kâr (CB Hariç)']; bonus = max(50, kayip_kar * 0.5)
                             st.error(f"**Sizi Özledik!**\nML Modelimiz, %{churn_riski_yuzde:.0f} ihtimalle sizi kaybetmek üzere olduğumuzu tahmin ediyor. Lütfen geri dönün, size özel **{bonus:,.0f} TL**'lik yakıt puanı anında cüzdanınızda!")
+                        elif risk_seviyesi == "Veri Eksik":
+                             st.info("Davranışsal verileriniz (örn: son işlem tarihi) eksik olduğu için size özel bir risk analizi yapamıyoruz, ancak standart tekliflerimizden yararlanabilirsiniz.")
                         elif segment == "Kayıp (Zarar)":
                             yukleme = customer_data['ortalama_aylik_yukleme_tl']
                             st.warning(f"**Yeni Fırsat!**\nYüksek yükleme ({yukleme:,.0f} TL) yaptığınızı görüyoruz. Bu parayı 15 gün 'Kazandıran Bakiye' olarak ayırın, işlem ücreti maliyetinizin yarısını puan olarak iade edelim!")
