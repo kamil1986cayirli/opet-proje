@@ -201,7 +201,7 @@ with tab3:
     except Exception as e: st.error(f"Hipotetik asistan yüklenirken bir hata oluştu: {e}")
 
 # ----------------------------------
-# TAB 4: Veri Yükle & Akıllı Analiz (KEYERROR İÇİN DÜZELTİLDİ)
+# TAB 4: Veri Yükle & Akıllı Analiz (KEYERROR VE INDEXERROR İÇİN DÜZELTİLDİ)
 # ----------------------------------
 with tab4:
     st.header("Veri Yükle & Akıllı Segmentasyon (Gerçek ML Modeli) 🧠")
@@ -242,25 +242,24 @@ with tab4:
         try:
             df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
             
-            # ----- DÜZELTME BURADA BAŞLIYOR (KeyError Kontrolü) -----
+            # ----- BAŞLANGIÇ: HATA KONTROL BLOKLARI -----
             
-            # 1. Modelin ihtiyaç duyduğu kolonlar (model_columns) ile yüklenen dosyanın kolonlarını (df.columns) karşılaştır
-            required_cols_set = set(model_columns)
-            uploaded_cols_set = set(df.columns)
+            # 1. Finansal Analiz için Gerekli Kolonlar
+            financial_cols = ['ortalama_aylik_yukleme_tl', 'ortalama_bakiye_tutma_suresi_gun']
+            missing_financial_cols = [col for col in financial_cols if col not in df.columns]
             
-            # Eksik kolonları bul
-            missing_cols = required_cols_set - uploaded_cols_set
-            
-            # ML için Gerekli Kolonlar
-            ml_ready = not bool(missing_cols) # Eğer eksik kolon yoksa (True)
-            
-            # Finansal Analiz için Gerekli Kolonlar
-            financial_cols_ok = 'ortalama_aylik_yukleme_tl' in df.columns and 'ortalama_bakiye_tutma_suresi_gun' in df.columns
-            
-            # ----- DÜZELTME BURADA BİTİYOR -----
-            
-            if not financial_cols_ok:
-                st.error("HATA: Yüklediğiniz dosyada 'ortalama_aylik_yukleme_tl' ve 'ortalama_bakiye_tutma_suresi_gun' kolonları bulunamadı. Temel analiz yapılamıyor.")
+            # 2. ML (Beyin) için Gerekli Kolonlar
+            ml_cols = model_columns # Bu, 'model_columns.pkl' dosyasından yüklendi
+            missing_ml_cols = [col for col in ml_cols if col not in df.columns]
+
+            ml_ready = not bool(missing_ml_cols) # Eğer eksik ML kolonu yoksa (True)
+            financial_ready = not bool(missing_financial_cols) # Eğer eksik Finansal kolon yoksa (True)
+
+            # ----- BİTİŞ: HATA KONTROL BLOKLARI -----
+
+            if not financial_ready:
+                st.error(f"HATA: Yüklediğiniz dosyada temel analiz için zorunlu kolonlar eksik: **{', '.join(missing_financial_cols)}**.")
+                st.warning("Lütfen 'Akıllı Şablonu' indirin ve dosyanızın bu kolonları içerdiğinden emin olun.")
                 if 'df_loaded' in st.session_state: del st.session_state['df_loaded']
             
             else:
@@ -283,7 +282,18 @@ with tab4:
                 if ml_ready:
                     # ML Modeli için gerekli tüm kolonlar var
                     df_for_model = df[model_columns].fillna(0)
-                    churn_probabilities = model.predict_proba(df_for_model)[:, 1]
+                    
+                    # ----- DÜZELTME BURADA (IndexError Kontrolü) -----
+                    # 1. Modelin kaç sınıf bildiğini kontrol et
+                    if hasattr(model, 'classes_') and len(model.classes_) == 2:
+                        # Model hem 0'ı hem de 1'i biliyor. (İdeal durum)
+                        churn_probabilities = model.predict_proba(df_for_model)[:, 1]
+                    else:
+                        # Model sadece 1 sınıf biliyor (muhtemelen sadece 0'ları görmüş).
+                        st.warning("ML Modeli, eğitim verisinde hiç 'terk eden' müşteri (hedef=1) bulamadı. Tüm churn riskleri 0 olarak ayarlanıyor.")
+                        churn_probabilities = np.zeros(len(df_for_model)) # Herkes için 0% risk
+                    # ----- DÜZELTME BİTTİ -----
+
                     df['Churn Riski (%)'] = (churn_probabilities * 100).round(0)
                     
                     def set_risk_level(row):
@@ -334,7 +344,6 @@ with tab4:
                 st.dataframe(df.sort_values(by='Churn Riski (%)', ascending=False), use_container_width=True)
         
         except KeyError as e:
-            # Bu, 'df_for_model = df[model_columns].fillna(0)' satırı başarısız olursa diye ek bir güvencedir
             st.error(f"HATA: Yüklediğiniz dosyada '{e}' kolonu bulunamadı. Lütfen 'Akıllı Şablon' formatını kullandığınızdan emin olun.")
             if 'df_loaded' in st.session_state: del st.session_state['df_loaded']
         except Exception as e:
@@ -360,7 +369,6 @@ with tab5:
 
         if selected_customer_name:
             
-            # ----- DÜZELTME BURADA BAŞLIYOR (AttributeError Kontrolü) -----
             customer_data = None
             try:
                 filtered_df = df_loaded[df_loaded[display_column] == selected_customer_name]
@@ -371,8 +379,6 @@ with tab5:
             except Exception as e:
                 st.error(f"Müşteri verisi alınırken beklenmedik bir hata oluştu: {e}")
             
-            # ----- DÜZELTME BURADA BİTİYOR -----
-
             if customer_data is not None:
                 segment = customer_data.get('Segment', 'Kayıp (Zarar)'); brut_gelir = customer_data.get('Aylık Brüt Gelir (Faiz)', 0)
                 segment_cb_map = {'Platin': 0.75, 'Altın': 0.60, 'Gümüş': 0.40, 'Bronz': 0.20, 'Kayıp (Zarar)': 0.0}
