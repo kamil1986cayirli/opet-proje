@@ -467,8 +467,8 @@ with tab5:
                             # 1. API'yi yapılandır
                             genai.configure(api_key=api_key)
                             
-                            # ---- DÜZELTME (Hata alınan model yerine 'gemini-pro') ----
-                            gemini_model = genai.GenerativeModel('gemini-pro')
+                            # ---- DÜZELTME (Hata alınan model yerine 'gemini-1.0-pro') ----
+                            gemini_model = genai.GenerativeModel('gemini-1.0-pro')
                             
                             # 2. Müşteri verisinden anlamlı bir metin oluştur
                             customer_data_text = customer_data.to_json(force_ascii=False, indent=4)
