@@ -137,7 +137,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 ])
 
 # ----------------------------------
-# TAB 1, 2 - Değişiklik Yok
+# TAB 1, 2, 3 - Değişiklik Yok
 # ----------------------------------
 with tab1:
     st.header("Genel Proje Kârlılığı (Hipotetik / Aylık)")
@@ -202,91 +202,60 @@ with tab2:
         if basa_bas_gunu: st.success(f"**Başa Baş Noktası: {basa_bas_gunu} Gün**\nBu ayarlarla, 'ortalama' bir müşterinin bize net kâr getirmeye başlaması için, parasını sistemde en az **{basa_bas_gunu} gün** tutması gerekiyor.")
         else: st.error("**Başa Baş Noktası BULUNAMADI**\nMevcut maliyet yapısıyla, müşteri parasını 30 gün tutsa bile bu model net kâr üretemiyor.")
 
-# ----------------------------------
-# TAB 3: Yapay Zeka RFM Segmentasyonu
-# ----------------------------------
 with tab3:
     st.header("Yapay Zeka RFM Segmentasyonu 🧠")
     st.info("Bu sekme, 'Veri Yükle' sekmesinde yüklediğiniz veriyi kullanarak müşterilerinizi *doğal davranış gruplarına* (kümelere) ayırır.")
-
     if not models_loaded_successfully:
         st.error("RFM Modeli ('rfm_model.pkl') yüklenemedi. Lütfen model eğitiminin başarılı olduğundan ve dosyaların GitHub'da olduğundan emin olun.")
-    
     elif st.session_state.get('df_loaded') is None:
         st.warning("Bu analizi görmek için lütfen önce 'Veri Yükle & Churn Analizi 📂' sekmesinden bir müşteri veri dosyası yükleyin.")
-    
     else:
         df_loaded = st.session_state['df_loaded'].copy()
-        
-        # 1. RFM Modeli için gerekli kolonlar var mı diye kontrol et
         if 'RFM_Segment_Adi' not in df_loaded.columns:
             st.warning("RFM Segmentasyonu henüz hesaplanmamış veya yüklediğiniz veri RFM modeli için uygun değil (gerekli kolonlar eksik).")
             st.info("Lütfen 'Veri Yükle & Churn Analizi 📂' sekmesine gidin ve 8 kolonlu 'Akıllı Şablon' formatında bir dosya yükleyin.")
-        
         elif df_loaded['RFM_Segment_Adi'].eq('Veri Eksik').all():
              st.warning("RFM Segmentasyonu yapılamadı. Yüklediğiniz dosya, RFM modeli için gerekli davranışsal kolonları (örn: aylik_yukleme_sikligi, son_islem_uzerinden_gecen_gun) içermiyor.")
-        
         else:
             try:
-                st.subheader("Dinamik RFM Segment Özeti")
-                st.markdown("Yapay Zeka, müşterilerinizi R (Yenilik), F (Sıklık) ve M (Parasal Değer) benzeri metriklere göre 4 doğal gruba ayırdı:")
-                
-                # 5. Kümeleri Görselleştir
-                display_analysis = df_loaded.groupby('RFM_Segment_Adi')['Aylık NET Kâr (CB Hariç)'].agg(['count', 'mean', 'sum']).reset_index()
-                display_analysis = display_analysis.rename(columns={'count': 'Müşteri Sayısı', 'mean': 'Müşteri Başı Ort. Net Kâr', 'sum': 'Toplam Net Kâr'})
-                
-                st.dataframe(display_analysis.sort_values(by='Toplam Net Kâr', ascending=False).style.format({
-                    'Müşteri Sayısı': '{:,.0f}',
-                    'Müşteri Başı Ort. Net Kâr': '{:,.2f} TL',
-                    'Toplam Net Kâr': '{:,.2f} TL'
-                }))
-
-                st.header("🤖 RFM Asistanı Yorumu")
+                st.subheader("Dinamik RFM Segment Özeti"); st.markdown("Yapay Zeka, müşterilerinizi R (Yenilik), F (Sıklık) ve M (Parasal Değer) benzeri metriklere göre 4 doğal gruba ayırdı:")
+                display_analysis = df_loaded.groupby('RFM_Segment_Adi')['Aylık NET Kâr (CB Hariç)'].agg(['count', 'mean', 'sum']).reset_index().rename(columns={'count': 'Müşteri Sayısı', 'mean': 'Müşteri Başı Ort. Net Kâr', 'sum': 'Toplam Net Kâr'})
+                st.dataframe(display_analysis.sort_values(by='Toplam Net Kâr', ascending=False).style.format({'Müşteri Sayısı': '{:,.0f}', 'Müşteri Başı Ort. Net Kâr': '{:,.2f} TL', 'Toplam Net Kâr': '{:,.2f} TL'}))
+                st.header("🤖 RFM Asistanı Yorumu");
                 with st.container(border=True):
                     try:
                         sampiyon_kar = display_analysis[display_analysis['RFM_Segment_Adi'].str.contains("Şampiyonlar")]['Müşteri Başı Ort. Net Kâr'].iloc[0]
                         zarar_eden_kar = display_analysis[display_analysis['RFM_Segment_Adi'].str.contains("Zarar Edenler")]['Müşteri Başı Ort. Net Kâr'].iloc[0]
                         st.success(f"**Şampiyonlar 🥇:** Bu grup, müşteri başına ortalama **{sampiyon_kar:,.2f} TL** ile en kârlı segmentiniz. Bu müşterileri 'Churn Riski' (Tab 4) açısından yakından takip edin.")
                         st.error(f"**Zarar Edenler 💔:** Bu grup, (muhtemelen 'Geçici' müşteriler) müşteri başına **{zarar_eden_kar:,.2f} TL** ile size net zarar ettiriyor. Bu segmente 'bakiye tutma süresini' artıracak özel kampanyalar uygulanmalıdır.")
-                    except Exception as e:
-                        st.error(f"RFM Asistanı yorum yaparken bir hata oluştu: {e}")
-            
-            except Exception as e:
-                st.error(f"RFM analizi sırasında bir hata oluştu: {e}")
-
+                    except Exception as e: st.error(f"RFM Asistanı yorum yaparken bir hata oluştu: {e}")
+            except Exception as e: st.error(f"RFM analizi sırasında bir hata oluştu: {e}")
 
 # ----------------------------------
-# TAB 4: Veri Yükle & Churn Analizi (TÜM HATA KONTROLLERİ EKLENDİ)
+# TAB 4: Veri Yükle & Churn Analizi
 # ----------------------------------
 with tab4:
     st.header("Veri Yükle & Churn Analizi 📂")
     st.info("Kendi müşteri verinizi yükleyerek *net kârlılık*, *churn (terk) riski* ve *RFM segmentasyonu* analizi yapın. Yüklediğiniz veri, diğer iki 'akıllı' sekmeyi de besleyecektir.")
-
     st.subheader("1. Adım: Şablonu İndirin")
     sample_data = {
-        'musteri_id': ['M-1001', 'M-1002', 'M-1003'],
-        'ad_soyad': ['Ali Veli (Riskli)', 'Ayşe Yılmaz (Sadık)', 'Mehmet Öztürk (Zarar)'],
-        'ortalama_aylik_yukleme_tl': [8000, 2000, 15000],
-        'ortalama_bakiye_tutma_suresi_gun': [25, 28, 3],
-        'aylik_yukleme_sikligi': [2, 1, 4],
-        'aylik_harcama_sikligi': [5, 2, 8],
-        'son_islem_uzerinden_gecen_gun': [35, 2, 1], 
-        'harcama_trendi_yuzde': [-25, 10, 5]
+        'musteri_id': ['M-1001', 'M-1002', 'M-1003'], 'ad_soyad': ['Ali Veli (Riskli)', 'Ayşe Yılmaz (Sadık)', 'Mehmet Öztürk (Zarar)'],
+        'ortalama_aylik_yukleme_tl': [8000, 2000, 15000], 'ortalama_bakiye_tutma_suresi_gun': [25, 28, 3],
+        'aylik_yukleme_sikligi': [2, 1, 4], 'aylik_harcama_sikligi': [5, 2, 8],
+        'son_islem_uzerinden_gecen_gun': [35, 2, 1], 'harcama_trendi_yuzde': [-25, 10, 5]
     }
     df_sample = pd.DataFrame(sample_data)
-    
     @st.cache_data
     def to_excel_v2(df): 
         output = io.BytesIO();
         with pd.ExcelWriter(output, engine='openpyxl') as writer: df.to_excel(writer, index=False, sheet_name='Musteri_Verisi')
         return output.getvalue()
-
     excel_data = to_excel_v2(df_sample)
     st.download_button(label="📥 Yeni Akıllı Şablonu İndir (.xlsx)", data=excel_data, file_name='opet_pay_akilli_sablon.xlsx')
     
     st.subheader("2. Adım: Veri Dosyasını Yükleyin")
     uploaded_file = st.file_uploader("Doldurduğunuz yeni şablonu (Excel/CSV) buraya yükleyin:", type=["xlsx", "csv"], key="file_uploader")
-
+    
     st.subheader("3. Adım: Dinamik Net Kârlılık ve Churn Analizi")
     
     if not models_loaded_successfully:
@@ -312,7 +281,6 @@ with tab4:
             
             if not financial_ready:
                 st.error(f"HATA: Yüklediğiniz dosyada temel analiz için zorunlu kolonlar eksik: **{', '.join(missing_financial_cols)}**.")
-                st.warning("Lütfen 'Akıllı Şablonu' indirin ve dosyanızın bu kolonları içerdiğinden emin olun.")
                 if 'df_loaded' in st.session_state: del st.session_state['df_loaded']
             
             else:
@@ -497,7 +465,9 @@ with tab5:
                         try:
                             # 1. API'yi yapılandır
                             genai.configure(api_key=api_key)
-                            gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+                            
+                            # ---- DÜZELTME (Hata alınan model yerine 'gemini-pro') ----
+                            gemini_model = genai.GenerativeModel('gemini-pro')
                             
                             # 2. Müşteri verisinden anlamlı bir metin oluştur
                             customer_data_text = customer_data.to_json(force_ascii=False, indent=4)
