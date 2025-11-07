@@ -7,11 +7,11 @@ import joblib # MODELİ YÜKLEMEK İÇİN YENİ KÜTÜPHANE
 
 # YENİ KÜTÜPHANE (Copilot için)
 try:
-    import google.generativeai as genai
-    GEMINI_LOADED = True
+    import openai # Google yerine OpenAI
+    OPENAI_LOADED = True
 except ImportError:
-    GEMINI_LOADED = False
-    print("Google Generative AI kütüphanesi bulunamadı. Copilot özelliği çalışmayacak.")
+    OPENAI_LOADED = False
+    print("OpenAI kütüphanesi bulunamadı. Copilot özelliği çalışmayacak.")
 
 
 # ---------------------------------------------------------------------
@@ -110,10 +110,10 @@ st.sidebar.header("Maliyet Girdileri (Net Kâr için) 💸")
 islem_maliyeti_yuzde = st.sidebar.slider("İşlem Maliyeti (%)", 0.0, 5.0, 2.5, step=0.1)
 op_maliyet_tl = st.sidebar.slider("Müşteri Başı Aylık Operasyonel Maliyet (TL)", 0.0, 10.0, 1.0, step=0.5)
 
-# ----- COPILOT API ANAHTARI -----
-st.sidebar.header("🤖 Copilot (Gemini) Ayarları")
-st.sidebar.markdown("Test etmek için [Google AI Studio'dan](https://aistudio.google.com/app/apikey) aldığınız API anahtarınızı girin.")
-api_key = st.sidebar.text_input("Google AI API Key", type="password", help="Anahtarınız kodunuza kaydedilmez, sadece oturumunuzda kullanılır.")
+# ----- YENİ BÖLÜM: COPILOT API ANAHTARI (OpenAI) -----
+st.sidebar.header("🤖 Copilot (ChatGPT) Ayarları")
+st.sidebar.markdown("Test etmek için [platform.openai.com](https://platform.openai.com/api-keys) adresinden aldığınız API anahtarınızı girin.")
+api_key = st.sidebar.text_input("OpenAI API Key (sk-...)", type="password", help="Anahtarınız kodunuza kaydedilmez, sadece oturumunuzda kullanılır.")
 
 # ---------------------------------------------------------------------
 # 4. ANA HESAPLAMALAR VE DASHBOARD SEKMELERİ
@@ -232,7 +232,7 @@ with tab3:
             except Exception as e: st.error(f"RFM analizi sırasında bir hata oluştu: {e}")
 
 # ----------------------------------
-# TAB 4: Veri Yükle & Churn Analizi (TÜM HATA KONTROLLERİ EKLENDİ)
+# TAB 4: Veri Yükle & Churn Analizi
 # ----------------------------------
 with tab4:
     st.header("Veri Yükle & Churn Analizi 📂")
@@ -269,11 +269,9 @@ with tab4:
             financial_cols = ['ortalama_aylik_yukleme_tl', 'ortalama_bakiye_tutma_suresi_gun']
             missing_financial_cols = [col for col in financial_cols if col not in df.columns]
             
-            # churn_ml_cols, models['churn_columns'] içinden (model_columns.pkl dosyasından) gelir
             churn_ml_cols = models['churn_columns']
             missing_churn_ml_cols = [col for col in churn_ml_cols if col not in df.columns]
             
-            # rfm_ml_cols, models['rfm_columns'] içinden (rfm_columns.pkl dosyasından) gelir
             rfm_ml_cols = models['rfm_columns']
             missing_rfm_ml_cols = [col for col in rfm_ml_cols if col not in df.columns]
 
@@ -458,19 +456,18 @@ with tab5:
                             st.success(f"**Sadakatinizle Kazandırıyorsunuz!**\n{financial_segment} segmentinde olduğunuz için teşekkür ederiz. Opet Pay'i kullandığınız sürece atıl bakiyeniz sizin için çalışmaya devam edecek.")
                 
                 st.divider()
-                st.subheader("🤖 Copilot (Gemini) Analizi")
+                
+                # ----- BAŞLANGIÇ: COPILOT (CHATGPT) BÖLÜMÜ -----
+                st.subheader("🤖 Copilot (ChatGPT) Analizi")
                 if not api_key:
-                    st.warning("Google AI (Gemini) analizi için lütfen soldaki menüden API anahtarınızı girin.")
-                elif not GEMINI_LOADED:
-                    st.error("Google AI kütüphanesi (google.generativeai) yüklenemedi. Lütfen 'requirements.txt' dosyanızı kontrol edin.")
+                    st.warning("OpenAI (ChatGPT) analizi için lütfen soldaki menüden 'OpenAI API Key (sk-...)' anahtarınızı girin.")
+                elif not OPENAI_LOADED:
+                    st.error("OpenAI kütüphanesi yüklenemedi. Lütfen 'requirements.txt' dosyanızı kontrol edin.")
                 else:
                     if st.button(f"{selected_customer_name} için Kişiselleştirilmiş Eylem Planı İste"):
                         try:
                             # 1. API'yi yapılandır
-                            genai.configure(api_key=api_key)
-                            
-                            # ---- DÜZELTME (Hata alınan model yerine 'gemini-1.0-pro') ----
-                            gemini_model = genai.GenerativeModel('gemini-1.0-pro')
+                            client = openai.OpenAI(api_key=api_key)
                             
                             # 2. Müşteri verisinden anlamlı bir metin oluştur
                             customer_data_text = customer_data.to_json(force_ascii=False, indent=4)
@@ -502,12 +499,19 @@ with tab5:
                             (Eğer 'KRİTİK' ise 'Sizi Özledik' temalı; eğer 'Zarar Edenler' ise 'Daha Çok Kazanın' temalı; eğer 'Bronz' ise 'Segment Atla' temalı; eğer 'Platin' ve 'Sağlıklı' ise 'Teşekkür/Özel Ayrıcalık' temalı olmalı.)
                             """
                             
-                            with st.spinner(f"{selected_customer_name} için Gemini (Copilot) analiz yapıyor..."):
-                                response = gemini_model.generate_content(prompt)
-                                st.markdown(response.text)
+                            with st.spinner(f"{selected_customer_name} için ChatGPT (Copilot) analiz yapıyor..."):
+                                response = client.chat.completions.create(
+                                    model="gpt-3.5-turbo", # En hızlı ve stabil model
+                                    messages=[
+                                        {"role": "system", "content": "Sen Opet Pay için çalışan bir üst düzey Pazarlama Stratejistisin."},
+                                        {"role": "user", "content": prompt}
+                                    ]
+                                )
+                                st.markdown(response.choices[0].message.content)
 
                         except Exception as e:
-                            st.error(f"Gemini API ile konuşulurken bir hata oluştu: {e}")
+                            st.error(f"OpenAI API ile konuşulurken bir hata oluştu: {e}")
+                # ----- BİTİŞ: COPILOT (CHATGPT) BÖLÜMÜ -----
 
 
 # ---------------------------------------------------------------------
