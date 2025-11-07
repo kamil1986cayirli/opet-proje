@@ -232,7 +232,7 @@ with tab3:
             except Exception as e: st.error(f"RFM analizi sırasında bir hata oluştu: {e}")
 
 # ----------------------------------
-# TAB 4: Veri Yükle & Churn Analizi (TÜM HATA KONTROLLERİ EKLENDİ)
+# TAB 4: Veri Yükle & Churn Analizi
 # ----------------------------------
 with tab4:
     st.header("Veri Yükle & Churn Analizi 📂")
